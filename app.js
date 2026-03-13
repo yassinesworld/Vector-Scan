@@ -119,7 +119,7 @@ async function start() {
             color: {
                 conditions: [
                     ['${feature["building"]}' === "hospital", "color('red')"],
-                    ['true', "color('#1a2a2a', 0.8)"] // Dark tactical grey
+                    ['true', "color('#00ffaa', 0.8)"] // Dark tactical grey
                 ]
             }
         });
