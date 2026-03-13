@@ -1,6 +1,6 @@
 export const DataEngine = {
     // REPLACE 'temp_xxxxxxxx' with your actual key from cors.sh
-    API_KEY: 'temp_YOUR_FREE_KEY', 
+    API_KEY: 'temp_69b34d7c55b023fc64131a3fb0ba48d9', 
 
     async fetchProfessional(targetUrl) {
         try {
