@@ -26,8 +26,11 @@ async function syncFlights() {
     console.log("📡 Requesting Flight Data...");
     try {
         const aircraft = await DataEngine.getUnfilteredFlights();
-        console.log(`✈️ API Check: Received ${aircraft ? aircraft.length : 0} aircraft.`);
         
+        // --- ADD THIS LINE: Removes old planes so the map stays clean ---
+        viewer.entities.values.filter(e => e.id.startsWith('PLANE_')).forEach(e => viewer.entities.remove(e));
+        
+        console.log(`✈️ API Check: Received ${aircraft ? aircraft.length : 0} aircraft.`); 
         aircraft.forEach(ac => {
             const id = `PLANE_${ac.hex}`;
             const pos = Cesium.Cartesian3.fromDegrees(ac.lon, ac.lat, (ac.alt_baro || 0) * 0.3048);
@@ -106,6 +109,23 @@ function updateOrbits() {
 
 // --- 4. STARTUP & DEBUG PULSE ---
 async function start() {
+        // --- RENDER BUILDINGS ---
+    try {
+        const buildingsTileset = await Cesium.createOsmBuildingsAsync();
+        viewer.scene.primitives.add(buildingsTileset);
+
+        // Optional: Style them to match your VECTOR-SCAN theme
+        buildingsTileset.style = new Cesium.Cesium3DTileStyle({
+            color: {
+                conditions: [
+                    ['${feature["building"]}' === "hospital", "color('red')"],
+                    ['true', "color('#1a2a2a', 0.8)"] // Dark tactical grey
+                ]
+            }
+        });
+    } catch (error) {
+        console.error("Error loading buildings:", error);
+    }
     // Imagery setup
     const layer = viewer.imageryLayers.get(0);
     layer.brightness = 0.5;
