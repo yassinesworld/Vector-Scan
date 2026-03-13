@@ -1,0 +1,35 @@
+body, html, #cesiumContainer {
+    width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+    background: #000;
+}
+
+/* Scanline Effect */
+#cesiumContainer::after {
+    content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), 
+                linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+    z-index: 2; background-size: 100% 3px, 2px 100%; pointer-events: none;
+}
+
+#ui-layer {
+    position: absolute; top: 0; width: 100%; height: 100%;
+    pointer-events: none; color: #00ffaa; font-family: 'Courier New', monospace;
+    z-index: 10; text-shadow: 0 0 5px #00ffaa;
+}
+
+.header { padding: 20px; background: rgba(0,0,0,0.6); border-bottom: 1px solid #00ffaa; }
+.controls { float: right; pointer-events: auto; }
+.controls button {
+    background: transparent; border: 1px solid #00ffaa; color: #00ffaa;
+    padding: 5px 10px; cursor: pointer; font-family: inherit; margin-left: 5px;
+}
+.controls button:hover { background: rgba(0, 255, 170, 0.2); }
+
+.intel-panel {
+    position: absolute; left: 220px; top: 100px; width: 260px;
+    background: rgba(0, 20, 20, 0.8); border: 1px solid #00ffaa;
+    padding: 15px; pointer-events: auto; backdrop-filter: blur(4px);
+}
+.online { color: #00ffaa; }
+.blink { animation: blinker 1.5s linear infinite; color: #ff0000; }
+@keyframes blinker { 50% { opacity: 0; } }
