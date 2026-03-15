@@ -1,165 +1,153 @@
 import { CONFIG } from './config.js';
 import { DataEngine } from './DataEngine.js';
 
-// --- 1. GLOBAL SCOPE: UI BUTTONS ---
-window.setVisualMode = (mode) => {
-    console.log("Visual Command:", mode);
-    const stages = viewer.scene.postProcessStages;
-    while (stages.length > 0) { stages.remove(stages.get(0)); }
-    
-    if (mode === 'NVG') stages.add(Cesium.PostProcessStageLibrary.createNightVisionStage());
-    else if (mode === 'FLIR') stages.add(Cesium.PostProcessStageLibrary.createBlackAndWhiteStage());
-};
+// --- 1. GLOBAL SCOPE ---
+let satellites = []; // Holds satellite entities for monitoring
 
 // --- 2. ENGINE INITIALIZATION ---
 Cesium.Ion.defaultAccessToken = CONFIG.CESIUM_TOKEN;
 
 const viewer = new Cesium.Viewer('cesiumContainer', {
     terrainProvider: await Cesium.createWorldTerrainAsync(),
-    baseLayerPicker: false, animation: false, timeline: false, geocoder: false, shouldAnimate: true
+    baseLayerPicker: false,
+    animation: false,
+    timeline: false,
+    geocoder: false,
+    shouldAnimate: true
 });
 
-let satellites = [];
-
-// --- 3. DATA HANDLERS ---
-async function syncFlights() {
-    console.log("📡 Requesting Flight Data...");
+// --- 3. WORLD STYLING ---
+async function initWorldStyle() {
     try {
-        const aircraft = await DataEngine.getUnfilteredFlights();
-        
-        // --- ADD THIS LINE: Removes old planes so the map stays clean ---
-        viewer.entities.values.filter(e => e.id.startsWith('PLANE_')).forEach(e => viewer.entities.remove(e));
-        
-        console.log(`✈️ API Check: Received ${aircraft ? aircraft.length : 0} aircraft.`); 
-        aircraft.forEach(ac => {
-            const id = `PLANE_${ac.hex}`;
-            const pos = Cesium.Cartesian3.fromDegrees(ac.lon, ac.lat, (ac.alt_baro || 0) * 0.3048);
-            
-            let entity = viewer.entities.getById(id);
-            if (entity) {
-                entity.position = pos;
-            } else {
-                viewer.entities.add({
-                    id: id,
-                    name: ac.flight ? ac.flight.trim() : `HEX_${ac.hex}`,
-                    position: pos,
-                    point: { 
-                        pixelSize: ac.mil === "1" ? 8 : 4, 
-                        color: ac.mil === "1" ? Cesium.Color.RED : Cesium.Color.CYAN 
-                    }
-                });
-            }
+        const buildings = await Cesium.createOsmBuildingsAsync();
+        viewer.scene.primitives.add(buildings);
+        buildings.style = new Cesium.Cesium3DTileStyle({
+            color: "color('#00ffaa', 0.5)",
+            show: true
         });
-    } catch (e) {
-        console.error("❌ Flight Sync Error:", e);
-    }
+    } catch (e) { console.warn("Building Engine Offline"); }
+
+    const layer = viewer.imageryLayers.get(0);
+    layer.brightness = 0.4;
+    layer.contrast = 1.2;
 }
 
+// --- 4. FLIGHT SYNC ---
+async function syncFlights() {
+    console.log("📡 VECTOR-SCAN: Updating Airspace...");
+    try {
+        const aircraft = await DataEngine.getUnfilteredFlights();
+
+        // Remove old planes
+        viewer.entities.values
+            .filter(e => e.id && e.id.startsWith('PLANE_'))
+            .forEach(e => viewer.entities.remove(e));
+
+        aircraft.forEach(ac => {
+            const id = `PLANE_${ac.hex}`;
+            let color = Cesium.Color.CYAN;
+            let pixelSize = 6;
+
+            if (ac.isMilitary) { color = Cesium.Color.RED; pixelSize = 10; }
+            else if (ac.flight === "N/A") { color = Cesium.Color.YELLOW; pixelSize = 5; }
+
+            viewer.entities.add({
+                id: id,
+                name: `${ac.isMilitary ? '[MIL] ' : ''}${ac.flight}`,
+                position: Cesium.Cartesian3.fromDegrees(ac.lon, ac.lat, ac.alt_baro),
+                point: { pixelSize, color, outlineColor: Cesium.Color.BLACK, outlineWidth: 2 },
+                label: {
+                    text: ac.isMilitary ? `⚠ ${ac.flight}` : ac.flight,
+                    font: '10px monospace',
+                    fillColor: color,
+                    pixelOffset: new Cesium.Cartesian2(0, -15),
+                    distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 300000)
+                }
+            });
+        });
+    } catch (e) { console.error("Airspace sync failed:", e); }
+}
+
+// --- 5. SATELLITE INIT ---
 async function initSatellites() {
-    console.log("🛰️ Requesting Satellite Data...");
+    console.log("🛰️ INITIALIZING ORBITAL SECTOR...");
     try {
         const tles = await DataEngine.getSatelliteTLEs();
-        console.log(`🛰️ API Check: Received ${tles ? tles.length : 0} TLEs.`);
-        
-        // Take 150 to keep performance smooth
-        satellites = tles.slice(0, 150).map(tle => {
+        console.log(`Loud and clear.`)
+        console.log(`🛰️ TLEs Retrieved: ${tles.length}`);
+        const safeTles = tles || [];
+        console.log(`🛰️ Valid TLEs: ${safeTles.length}`);
+
+        // Limit satellites for rendering performance; optional: slice to nearest 1000–5000 for full 14k
+        const MAX_RENDER = 1000;
+
+        satellites = safeTles.slice(0, MAX_RENDER).map(tle => {
+            if (!tle.TLE_LINE1 || !tle.TLE_LINE2) return null;
+
             try {
-                // FIXED: Passing the specific lines instead of the whole object
                 const satrec = satellite.twoline2satrec(tle.TLE_LINE1, tle.TLE_LINE2);
-                
-                if (!satrec) return null;
 
                 const entity = viewer.entities.add({
                     name: tle.OBJECT_NAME,
-                    point: { 
-                        pixelSize: 4, 
+                    position: new Cesium.CallbackProperty((time) => {
+                        const now = Cesium.JulianDate.toDate(time);
+                        const posProp = satellite.propagate(satrec, now);
+
+                        if (!posProp || !posProp.position) return Cesium.Cartesian3.ZERO;
+
+                        const gmst = satellite.gstime(now);
+                        const posGeo = satellite.eciToGeodetic(posProp.position, gmst);
+
+                        if (isNaN(posGeo.latitude) || isNaN(posGeo.longitude) || isNaN(posGeo.height)) {
+                            return Cesium.Cartesian3.ZERO;
+                        }
+
+                        return Cesium.Cartesian3.fromDegrees(
+                            satellite.degreesLong(posGeo.longitude),
+                            satellite.degreesLat(posGeo.latitude),
+                            posGeo.height * 1000
+                        );
+                    }, false),
+                    point: {
+                        pixelSize: 4,
                         color: Cesium.Color.fromCssColorString('#00ffaa'),
-                        outlineWidth: 1 
+                        outlineWidth: 1
                     }
                 });
 
-                return { satrec, entity };
-            } catch (err) {
-                // Skips any malformed TLEs without crashing the whole loop
-                return null; 
-            }
+                return { entity };
+            } catch { return null; }
         }).filter(s => s !== null);
-        
-        console.log(`✅ Successfully initialized ${satellites.length} satellites.`);
-    } catch (e) {
-        console.error("❌ Satellite Init Error:", e);
-    }
+
+        console.log(`✅ ${satellites.length} Satellites Locked.`);
+    } catch (e) { console.error("Sat Engine Error:", e); }
 }
 
-function updateOrbits() {
-    const now = new Date();
-    satellites.forEach(s => {
-        const posProp = satellite.propagate(s.satrec, now);
-        const gmst = satellite.gstime(now);
-        if (posProp.position) {
-            const posGeo = satellite.eciToGeodetic(posProp.position, gmst);
-            s.entity.position = Cesium.Cartesian3.fromDegrees(
-                satellite.degreesLong(posGeo.longitude),
-                satellite.degreesLat(posGeo.latitude),
-                posGeo.height * 1000
-            );
-        }
-    });
-}
-
-// --- 4. STARTUP & DEBUG PULSE ---
+// --- 6. STARTUP SEQUENCE ---
 async function start() {
-        // --- RENDER BUILDINGS ---
-    try {
-        const buildingsTileset = await Cesium.createOsmBuildingsAsync();
-        viewer.scene.primitives.add(buildingsTileset);
+    await initWorldStyle();
 
-        // Optional: Style them to match your VECTOR-SCAN theme
-        buildingsTileset.style = new Cesium.Cesium3DTileStyle({
-            color: {
-                conditions: [
-                    ['${feature["building"]}' === "hospital", "color('red')"],
-                    ['true', "color('#00ffaa', 0.8)"] // Dark tactical grey
-                ]
-            }
-        });
-    } catch (error) {
-        console.error("Error loading buildings:", error);
-    }
-    // Imagery setup
-    const layer = viewer.imageryLayers.get(0);
-    layer.brightness = 0.5;
-    layer.contrast = 1.3;
-
-    // Load static markers
-    viewer.entities.add({
-        name: "DEBUG_CENTER",
-        position: Cesium.Cartesian3.fromDegrees(19.5, 54.4),
-        ellipse: { semiMinorAxis: 120000, semiMajorAxis: 120000, material: Cesium.Color.RED.withAlpha(0.2) }
-    });
-
-    // Fire data requests
+    // Load satellites and flights
     await initSatellites();
     await syncFlights();
 
-    // Loops
-    setInterval(syncFlights, 15000);
-    viewer.scene.postUpdate.addEventListener(updateOrbits);
+    // Refresh loops
+    setInterval(syncFlights, 15000); // planes every 15s
 
-    // --- DIAGNOSTIC MONITOR ---
     setInterval(() => {
-        console.log("--- 🛠️ SYSTEM MONITOR ---");
-        console.log("Total Entities:", viewer.entities.values.length);
-        console.log("Active Satellites:", satellites.length);
-        console.log("Camera Height:", viewer.camera.positionCartographic.height.toFixed(0), "m");
+        const planes = viewer.entities.values.filter(e => e.id && e.id.startsWith('PLANE_')).length;
+        console.log(`--- VECTOR-SCAN SITREP ---`);
+        console.log(`ORBITAL_OBJECTS: ${satellites.length}`);
+        console.log(`AIR_TARGETS: ${planes}`);
+        console.log(`GRID_COORD: ${viewer.camera.positionCartographic.longitude.toFixed(4)}, ${viewer.camera.positionCartographic.latitude.toFixed(4)}`);
     }, 5000);
 
-    // Force fly-to for verification
-    console.log("✈️ Moving camera to observation sector...");
+    // Initial camera fly-to
     viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(15.0, 52.0, 5000000.0), // Focus on Europe
+        destination: Cesium.Cartesian3.fromDegrees(15.0, 50.0, 4000000.0),
         duration: 2
     });
 }
 
+// --- 7. LAUNCH ---
 start();
