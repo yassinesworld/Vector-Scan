@@ -22,7 +22,7 @@ export const DataEngine = {
 
     async getUnfilteredFlights(lat, lon) {
         const radius = 250; // Max radius en NM
-        const url = `https://api.airplanes.live{lat}/${lon}/${radius}`;
+        const url = `https://api.airplanes.live/v2/point/${lat}/${lon}/${radius}`;
         
         const data = await this.fetchProfessional(url, true, true);
         console.log(`📡 Area Scan [${lat.toFixed(2)}, ${lon.toFixed(2)}]: ${data?.ac ? data.ac.length : 0} Contacts.`);
