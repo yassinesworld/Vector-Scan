@@ -63,6 +63,7 @@ function buildGrid() {
     }
 
     console.log("🌍 Grid initialized:", gridPoints.length);
+    globalScanStep();
 }
 
 // ==========================
