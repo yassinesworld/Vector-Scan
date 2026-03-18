@@ -22,7 +22,9 @@ export const DataEngine = {
 
     async getUnfilteredFlights(lat = 50.0, lon = 15.0, radius = 250) {
         // The 'point' endpoint returns ALL aircraft (Civ + Mil) in the area
-        const url = `https://api.airplanes.live{lat}/${lon}/${radius}`;
+        const url = `https://api.airplanes.live${lat}/${lon}/${radius}`;
+        console.log(`📡 Scanning Airspace at (${lat.toFixed(2)}, ${lon.toFixed(2)}) within ${radius}km...`);
+        console.log(`🔗 Fetching from: ${url}`);
         const data = await this.fetchProfessional(url, true, true);
         
         console.log(`✈️ Radar: ${data?.ac ? data.ac.length : 0} Total Targets Detected.`);
