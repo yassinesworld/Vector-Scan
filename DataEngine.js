@@ -20,23 +20,21 @@ export const DataEngine = {
         }
     },
 
-    async getUnfilteredFlights(lat = 50.0, lon = 15.0, radius = 250) {
-        // The 'point' endpoint returns ALL aircraft (Civ + Mil) in the area
-        const url = `https://api.airplanes.live${lat}/${lon}/${radius}`;
-        console.log(`📡 Scanning Airspace at (${lat.toFixed(2)}, ${lon.toFixed(2)}) within ${radius}km...`);
-        console.log(`🔗 Fetching from: ${url}`);
-        const data = await this.fetchProfessional(url, true, true);
+    async getUnfilteredFlights(lat, lon) {
+        const radius = 250; // Max radius en NM
+        const url = `https://api.airplanes.live{lat}/${lon}/${radius}`;
         
-        console.log(`✈️ Radar: ${data?.ac ? data.ac.length : 0} Total Targets Detected.`);
+        const data = await this.fetchProfessional(url, true, true);
+        console.log(`📡 Area Scan [${lat.toFixed(2)}, ${lon.toFixed(2)}]: ${data?.ac ? data.ac.length : 0} Contacts.`);
         
         if (data && data.ac) {
             return data.ac.map(ac => ({
                 hex: ac.hex,
-                flight: ac.flight ? ac.flight.trim() : "N/A",
+                flight: ac.flight ? ac.flight.trim() : "UNC-ID",
                 lon: ac.lon,
                 lat: ac.lat,
                 alt_baro: (ac.alt_baro || 0) * 0.3048,
-                // Check the 'mil' flag from the API
+                // On récupère le flag 'mil' pour différencier les cibles
                 isMilitary: ac.mil === 1 
             }));
         }
