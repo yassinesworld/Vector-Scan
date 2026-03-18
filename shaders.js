@@ -14,13 +14,5 @@ export const SHADER_MODES = {
         hue: 0.3, // Green shift
         saturation: 0.5,
         noise: true // Add grain for "Analog" feel
-    },
-    // ANIME: Cel-shaded / Ghibli
-    ANIME: {
-        brightness: 1.0,
-        contrast: 1.2,
-        hue: 0.0,
-        saturation: 1.5,
-        edgeDetection: true // The black outlines
     }
 };

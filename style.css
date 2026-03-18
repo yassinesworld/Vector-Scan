@@ -18,12 +18,45 @@ body, html, #cesiumContainer {
 }
 
 .header { padding: 20px; background: rgba(0,0,0,0.6); border-bottom: 1px solid #00ffaa; }
-.controls { float: right; pointer-events: auto; }
-.controls button {
-    background: transparent; border: 1px solid #00ffaa; color: #00ffaa;
-    padding: 5px 10px; cursor: pointer; font-family: inherit; margin-left: 5px;
+.control-panel {
+  float: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end; /* Aligns buttons to the right edge */
+  gap: 8px; /* Space between the two rows */
+  pointer-events: auto;
 }
-.controls button:hover { background: rgba(0, 255, 170, 0.2); }
+
+.controls, .cache {
+  display: flex;
+}
+
+/* Keeps your existing button styles, just ensuring they look uniform */
+.controls button, .cache button {
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 5px 10px;
+}
+
+.controls button {
+  border: 1px solid #00ffaa;
+  color: #00ffaa;
+}
+
+.controls button:hover {
+  background: rgb(0, 255, 170, 0.2);
+}
+
+.cache button {
+  border: 1px solid crimson;
+  color: crimson;
+  font-size: 0.8em; /* Optional: makes the reset button slightly more subtle */
+}
+
+.cache button:hover {
+  background: rgba(220, 20, 60, 0.2);
+}
 
 .intel-panel {
     position: absolute; left: 220px; top: 100px; width: 260px;

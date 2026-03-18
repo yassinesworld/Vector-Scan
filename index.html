@@ -14,21 +14,23 @@
     
     <div id="ui-layer">
         <div class="header">
+            <div class="control-panel">
+            <!-- Visual Mode Row -->
             <div class="controls">
                 <button onclick="setVisualMode('NORMAL')">NORMAL</button>
                 <button onclick="setVisualMode('NVG')">NVG</button>
                 <button onclick="setVisualMode('FLIR')">FLIR</button>
             </div>
+            <!-- Cache Row (Now underneath) -->
+            <div class="cache">
+                <button onclick="localStorage.clear(); location.reload();">RESET CACHE & REFRESH</button>
+            </div>
+            </div>
+
             <h1>VECTOR-SCAN <span class="blink">●</span></h1>
             <p>SYSTEMS: <span class="online">ACTIVE</span></p>
         </div>
-
-        <div class="intel-panel">
-            <div class="panel-header">OBJECT_INTEL</div>
-            <div id="data-content">SCANNING FOR TARGETS...</div>
         </div>
-    </div>
-
     <script type="module" src="app.js"></script>
 </body>
 </html>
