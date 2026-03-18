@@ -34,100 +34,136 @@ async function initWorldStyle() {
 }
 
 // --- FLIGHT SYNC ---
-async function syncFlights() {
-    const CACHE_KEY = "vs_flights_cache";
-    const CACHE_TTL = 15000;
-    
-    try {
-        // 1. GET CAMERA POSITION (Center of the Radar)
-        const center = viewer.camera.pickEllipsoid(
-            new Cesium.Cartesian2(viewer.canvas.clientWidth / 2, viewer.canvas.clientHeight / 2)
-        );
-        
-        let lat = 50.0, lon = 15.0; // Defaults
-        if (center) {
-            const cartographic = Cesium.Cartographic.fromCartesian(center);
-            lat = Cesium.Math.toDegrees(cartographic.latitude);
-            lon = Cesium.Math.toDegrees(cartographic.longitude);
-        }
+// --- GLOBAL FLIGHT SCAN ---
+const STEP_KM = 350;
+const BATCH_SIZE = 5;
+const SCAN_INTERVAL = 1000;
+const MAX_RADIUS = 250;
 
-        let aircraft;
-        const cached = localStorage.getItem(CACHE_KEY);
-        const lastFetch = localStorage.getItem(CACHE_KEY + "_time");
-        
-        if (cached && (Date.now() - lastFetch < CACHE_TTL)) {
-            aircraft = JSON.parse(cached);
+let gridPoints = [];
+let scanIndex = 0;
+
+// ==========================
+// BUILD GLOBAL GRID
+// ==========================
+function buildGrid() {
+    gridPoints = [];
+
+    const LAT_STEP = STEP_KM / 111;
+
+    for (let lat = -80; lat <= 80; lat += LAT_STEP) {
+        const cosLat = Math.cos(lat * Math.PI / 180);
+        if (cosLat < 0.2) continue;
+
+        const lonStep = STEP_KM / (111 * cosLat);
+
+        for (let lon = -180; lon <= 180; lon += lonStep) {
+            gridPoints.push({ lat, lon });
+        }
+    }
+
+    console.log("🌍 Grid initialized:", gridPoints.length);
+}
+
+// ==========================
+// PROCESS AIRCRAFT
+// ==========================
+function processAircraft(aircraft) {
+    const serverTime = Cesium.JulianDate.now();
+
+    aircraft.forEach(ac => {
+        if (!ac.lon || !ac.lat || isNaN(ac.lon) || isNaN(ac.lat)) return;
+
+        const id = `PLANE_${ac.hex}`;
+        const alt = (isNaN(ac.alt_baro) || ac.alt_baro === null) ? 50 : ac.alt_baro + 50;
+        const position = Cesium.Cartesian3.fromDegrees(ac.lon, ac.lat, alt);
+
+        let entity = viewer.entities.getById(id);
+
+        const targetColor = ac.isMilitary 
+            ? Cesium.Color.fromCssColorString(CONFIG.THEME.dangerColor)
+            : Cesium.Color.fromCssColorString(CONFIG.THEME.glowColor);
+
+        if (!entity) {
+            const sampledPosition = new Cesium.SampledPositionProperty();
+            sampledPosition.addSample(serverTime, position);
+
+            entity = viewer.entities.add({
+                id: id,
+                position: sampledPosition,
+                point: { 
+                    pixelSize: ac.isMilitary ? 8 : 5,
+                    color: targetColor,
+                    outlineWidth: 1 
+                },
+                path: { 
+                    show: true,
+                    leadTime: 0,
+                    trailTime: 300,
+                    width: 1.2,
+                    material: new Cesium.PolylineGlowMaterialProperty({ 
+                        glowPower: 0.1,
+                        color: targetColor 
+                    })
+                },
+                label: {
+                    text: ac.flight || "",
+                    font: '10px monospace',
+                    fillColor: targetColor,
+                    outlineColor: Cesium.Color.BLACK,
+                    outlineWidth: 2,
+                    pixelOffset: new Cesium.Cartesian2(0, -15),
+                    distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 500000)
+                }
+            });
         } else {
-            // PASS COORDINATES TO ENGINE
-            aircraft = await DataEngine.getUnfilteredFlights(lat, lon, 250); 
-            if (aircraft) {
-                localStorage.setItem(CACHE_KEY, JSON.stringify(aircraft));
-                localStorage.setItem(CACHE_KEY + "_time", Date.now());
-            }
+            entity.position.addSample(serverTime, position);
+            entity.point.color = targetColor;
         }
 
-        if (!aircraft || !Array.isArray(aircraft)) return;
+        entity._lastSeen = Date.now();
+    });
+}
 
-        const serverTime = Cesium.JulianDate.now();
-        const tacticalTime = Cesium.JulianDate.addSeconds(serverTime, -15, new Cesium.JulianDate());
+// ==========================
+// CLEANUP
+// ==========================
+function cleanupPlanes() {
+    const now = Date.now();
 
-        aircraft.forEach(ac => {
-            if (!ac.lon || !ac.lat || isNaN(ac.lon) || isNaN(ac.lat)) return;
-
-            const id = `PLANE_${ac.hex}`;
-            const alt = (isNaN(ac.alt_baro) || ac.alt_baro === null) ? 50 : ac.alt_baro + 50;
-            const position = Cesium.Cartesian3.fromDegrees(ac.lon, ac.lat, alt);
-            
-            let entity = viewer.entities.getById(id);
-
-            // Determine Color based on Military Status
-            const targetColor = ac.isMilitary 
-                ? Cesium.Color.fromCssColorString(CONFIG.THEME.dangerColor) // RED for Mil
-                : Cesium.Color.fromCssColorString(CONFIG.THEME.glowColor);   // CYAN for Civ
-
-            if (!entity) {
-                const sampledPosition = new Cesium.SampledPositionProperty();
-                sampledPosition.addSample(serverTime, position);
-
-                entity = viewer.entities.add({
-                    id: id,
-                    position: sampledPosition,
-                    point: { 
-                        pixelSize: ac.isMilitary ? 8 : 5, // Mil planes slightly larger
-                        color: targetColor, 
-                        outlineWidth: 1 
-                    },
-                    path: { 
-                        show: true, leadTime: 0, trailTime: 300, width: 1.2,
-                        material: new Cesium.PolylineGlowMaterialProperty({ 
-                            glowPower: 0.1, 
-                            color: targetColor 
-                        })
-                    },
-                    label: { // ADDING FLIGHT ID
-                        text: ac.flight,
-                        font: '10px monospace',
-                        fillColor: targetColor,
-                        outlineColor: Cesium.Color.BLACK,
-                        outlineWidth: 2,
-                        pixelOffset: new Cesium.Cartesian2(0, -15),
-                        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 500000)
-                    }
-                });
-            } else {
-                entity.position.addSample(serverTime, position);
-                // Update color in case it was cached differently
-                entity.point.color = targetColor;
+    viewer.entities.values
+        .filter(e => e.id?.startsWith('PLANE_'))
+        .forEach(e => {
+            if (now - (e._lastSeen || 0) > 60000) {
+                viewer.entities.remove(e);
             }
-            entity._lastSeen = Date.now();
         });
+}
 
-        // Cleanup stale tracks
-        viewer.entities.values.filter(e => e.id?.startsWith('PLANE_')).forEach(e => {
-            if (Date.now() - (e._lastSeen || 0) > 60000) viewer.entities.remove(e);
-        });
+// ==========================
+// GLOBAL SCAN LOOP
+// ==========================
+async function globalScanStep() {
+    for (let i = 0; i < BATCH_SIZE; i++) {
+        if (scanIndex >= gridPoints.length) {
+            scanIndex = 0;
+            console.log("🌍 Full sweep completed, restarting...");
+        }
 
-    } catch (e) { console.error("Radar Sync Error:", e); }
+        const { lat, lon } = gridPoints[scanIndex++];
+
+        try {
+            const aircraft = await DataEngine.getUnfilteredFlights(lat, lon, MAX_RADIUS);
+
+            if (aircraft && Array.isArray(aircraft)) {
+                processAircraft(aircraft);
+            }
+        } catch (e) {
+            console.warn("Scan error at", lat, lon);
+        }
+    }
+
+    cleanupPlanes();
 }
 
 // --- SATELLITE INIT ---
