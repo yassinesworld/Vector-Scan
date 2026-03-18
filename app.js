@@ -214,8 +214,8 @@ async function initSatellites() {
 async function start() {
     await initWorldStyle();
     await initSatellites();
-    await syncFlights();
-    setInterval(syncFlights, 15000);
+    await buildGrid();
+    setInterval(globalScanStep, 15000);
     setInterval(() => {
         const planes = viewer.entities.values.filter(e => e.id?.startsWith('PLANE_')).length;
         console.log(`--- VECTOR-SCAN SITREP: Sats: ${satellites.length} | Planes: ${planes} ---`);
