@@ -79,7 +79,8 @@ async function syncFlights() {
                         color: targetColor, 
                         outlineWidth: 1,
                         // Keeps points visible through Earth for that "Deep Radar" look
-                        disableDepthTestDistance: Number.POSITIVE_INFINITY 
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                        heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND
                     },
                     path: { 
                         show: true, trailTime: 600, width: 1.2,
@@ -150,7 +151,11 @@ async function initSatellites() {
                             posGeo.height * 1000, Cesium.Ellipsoid.WGS84, result
                         );
                     }, false),
-                    point: { pixelSize: 4, color: Cesium.Color.fromCssColorString('#00ffaa'), outlineWidth: 1 }
+                    point: {
+                        pixelSize: 4,
+                        color: Cesium.Color.fromCssColorString('#00ffaa'),
+                        outlineWidth: 1
+                    }
                 });
                 return { entity };
             } catch { return null; }
