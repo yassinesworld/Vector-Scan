@@ -21,8 +21,8 @@ export const DataEngine = {
     },
 
     async getUnfilteredFlights() {
-        const adsbUrl = "https://opendata.adsb.fi";
-        const openSkyUrl = "https://opensky-network.org";
+        const adsbUrl = "https://opendata.adsb.fi/api/v2/mil";
+        const openSkyUrl = "https://opensky-network.org/api/states/all";
 
         try {
             const [adsbData, openData] = await Promise.all([
