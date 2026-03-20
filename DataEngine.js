@@ -20,25 +20,55 @@ export const DataEngine = {
         }
     },
 
-    async getUnfilteredFlights(lat, lon) {
-        const radius = 250; // Max radius en NM
-        const url = `https://api.airplanes.live/v2/point/${lat}/${lon}/${radius}`;
-        
-        const data = await this.fetchProfessional(url, true, true);
-        console.log(`📡 Area Scan [${lat.toFixed(2)}, ${lon.toFixed(2)}]: ${data?.ac ? data.ac.length : 0} Contacts.`);
-        
-        if (data && data.ac) {
-            return data.ac.map(ac => ({
-                hex: ac.hex,
-                flight: ac.flight ? ac.flight.trim() : "UNC-ID",
-                lon: ac.lon,
-                lat: ac.lat,
-                alt_baro: (ac.alt_baro || 0) * 0.3048,
-                // On récupère le flag 'mil' pour différencier les cibles
-                isMilitary: ac.mil === 1 
-            }));
+    async getUnfilteredFlights() {
+        const adsbUrl = "https://opendata.adsb.fi";
+        const openSkyUrl = "https://opensky-network.org";
+
+        try {
+            const [adsbData, openData] = await Promise.all([
+                this.fetchProfessional(adsbUrl, true, true),
+                this.fetchProfessional(openSkyUrl, true, true)
+            ]);
+
+            const fleet = new Map();
+
+            // 1. Process Global ADS-B (High detail/Military)
+            if (adsbData?.ac) {
+                adsbData.ac.forEach(ac => {
+                    if (!ac.lon || !ac.lat) return;
+                    fleet.set(ac.hex.toLowerCase(), {
+                        hex: ac.hex.toLowerCase(),
+                        flight: ac.flight?.trim() || "ID-UNK",
+                        lon: ac.lon, lat: ac.lat,
+                        alt_baro: (ac.alt_baro || 0) * 0.3048,
+                        isMilitary: ac.mil === 1 || ac.mil === "1"
+                    });
+                });
+            }
+
+            // 2. Merge Global OpenSky (Fill massive gaps in civilian coverage)
+            if (openData?.states) {
+                openData.states.forEach(s => {
+                    const icao = s[0].toLowerCase();
+                    if (!fleet.has(icao) && s[5] && s[6]) { // Ensure lat/lon exists
+                        fleet.set(icao, {
+                            hex: icao,
+                            flight: s[1]?.trim() || "CIV-ID",
+                            lon: s[5], lat: s[6],
+                            alt_baro: s[7] || 0,
+                            isMilitary: false
+                        });
+                    }
+                });
+            }
+
+            const result = Array.from(fleet.values());
+            console.log(`📡 GLOBAL STRATEGIC SCAN: ${result.length} Live Targets.`);
+            return result;
+        } catch (e) {
+            console.error("Global Fetch Failed", e);
+            return [];
         }
-        return [];
     },
 
     async getSatelliteTLEs() {
