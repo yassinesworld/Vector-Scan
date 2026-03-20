@@ -100,6 +100,8 @@ async function syncFlights() {
             entity._lastSeen = Date.now();
         });
 
+        viewer.zoomTo(viewer.entities.values.find(e => e.id.startsWith('PLANE_')));
+
         // Global Cleanup: Wipe planes that haven't updated in 2 minutes
         const now = Date.now();
         viewer.entities.values.forEach(e => {
@@ -167,7 +169,6 @@ async function start() {
         const planes = viewer.entities.values.filter(e => e.id?.startsWith('PLANE_')).length;
         console.log(`--- VECTOR-SCAN SITREP: Sats: ${satellites.length} | Planes: ${planes} ---`);
     }, 5000);
-    viewer.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(15.0, 50.0, 4000000.0), duration: 2 });
 }
 
 start();
